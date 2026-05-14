@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useParams, Link, useNavigate } from 'react-router-dom'
+import { useParams, Link, Navigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { Profile, supabase } from '../lib/supabase'
 import { ArrowLeft, Upload, Loader2, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
@@ -44,7 +44,6 @@ const OPERATION_CONFIG: Record<string, { title: string; accept: Record<string, s
 
 export default function OperationPage({ profile }: { profile: Profile }) {
   const { type } = useParams<{ type: string }>()
-  const navigate = useNavigate()
   const config = type ? OPERATION_CONFIG[type] : null
 
   const [file, setFile] = useState<File | null>(null)
@@ -68,7 +67,7 @@ export default function OperationPage({ profile }: { profile: Profile }) {
   })
 
   if (!config || !type) {
-    return <Navigate />
+    return <Navigate to="/" replace />
   }
 
   const handleProcess = async () => {
@@ -242,9 +241,3 @@ export default function OperationPage({ profile }: { profile: Profile }) {
   )
 }
 
-// Helper Navigate component
-function Navigate() {
-  const navigate = useNavigate()
-  if (typeof window !== 'undefined') navigate('/')
-  return null
-}

@@ -1,23 +1,13 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js'
+import { createClient } from '@supabase/supabase-js'
 import type { VercelRequest } from '@vercel/node'
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL || process.env.SUPABASE_URL!
+const supabaseUrl = process.env.SUPABASE_URL!
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
 
 // Cliente con permisos de admin (para operaciones del backend)
 export const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 })
-
-// Crea un cliente con el JWT del usuario para respetar RLS
-export function getSupabaseFromRequest(req: VercelRequest): SupabaseClient {
-  const auth = req.headers.authorization
-  const token = auth?.replace(/^Bearer\s+/i, '')
-  return createClient(supabaseUrl, token || '', {
-    global: { headers: { Authorization: `Bearer ${token}` } },
-    auth: { persistSession: false, autoRefreshToken: false },
-  })
-}
 
 export async function authenticateUser(req: VercelRequest): Promise<{
   userId: string
