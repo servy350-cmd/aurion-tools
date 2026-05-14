@@ -16,7 +16,7 @@ import * as zip from '@zip.js/zip.js'
  * Extrae las imágenes embebidas dentro de un DOCX (que es un ZIP).
  */
 export async function extractImagesFromDocx(buffer: Buffer): Promise<{ mediaType: string; base64: string }[]> {
-  const reader = new zip.ZipReader(new zip.BlobReader(new Blob([buffer])))
+  const reader = new zip.ZipReader(new zip.BlobReader(new Blob([new Uint8Array(buffer)])))
   const entries = await reader.getEntries()
   const images: { mediaType: string; base64: string }[] = []
 
@@ -44,7 +44,7 @@ export async function extractImagesFromDocx(buffer: Buffer): Promise<{ mediaType
 export async function extractImagesFromPdf(buffer: Buffer): Promise<{ mediaType: string; base64: string }[]> {
   const url = process.env.LIBREOFFICE_SERVICE_URL || 'http://localhost:3001'
   const formData = new FormData()
-  const blob = new Blob([buffer])
+  const blob = new Blob([new Uint8Array(buffer)])
   formData.append('file', blob, 'input.pdf')
 
   const res = await fetch(`${url}/pdf-to-images`, { method: 'POST', body: formData })

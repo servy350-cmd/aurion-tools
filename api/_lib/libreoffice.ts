@@ -14,7 +14,7 @@ export async function convertFile(
 ): Promise<{ buffer: Buffer; filename: string }> {
   const formData = new FormData()
   // Buffer → Blob para fetch
-  const blob = new Blob([inputBuffer])
+  const blob = new Blob([new Uint8Array(inputBuffer)])
   formData.append('file', blob, inputFilename)
   formData.append('target', target)
 
