@@ -7,8 +7,7 @@
  * y devuelve un .xlsx con una fila por imagen.
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import Anthropic from '@anthropic-ai/sdk'
-import type { ImageBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
+import type OpenAI from 'openai'
 import ExcelJS from 'exceljs'
 import {
   authenticateUser,
@@ -22,9 +21,10 @@ import {
   requireServiceRole,
 } from '../_lib/supabase'
 import { extractImagesFromDocx } from '../_lib/images'
+import { getOpenAI, mapOpenAIError } from '../_lib/openai'
 
-const VISION_MODEL = 'claude-sonnet-4-20250514'
-const COST_PER_IMAGE_USD = 0.1
+const VISION_MODEL = 'gpt-4o-mini'
+const COST_PER_IMAGE_USD = 0.002
 
 type FillRow = Record<string, string | number | null>
 
@@ -50,41 +50,34 @@ async function readHeadersFromXlsx(buffer: Buffer): Promise<string[]> {
 }
 
 async function fillRowFromImage(
-  client: Anthropic,
+  client: OpenAI,
   image: { mediaType: string; base64: string },
   headers: string[]
 ): Promise<FillRow> {
   const prompt =
     `Analiza esta imagen y devuelve un JSON con exactamente estos campos: ` +
     `${JSON.stringify(headers)}. Si algún campo no se ve en la imagen, ponlo como null. ` +
-    `Responde SOLO el JSON, sin markdown ni explicación.`
+    `Responde SOLO un objeto JSON válido. Sin markdown ni texto adicional.`
 
-  const content: (ImageBlockParam | TextBlockParam)[] = [
-    {
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: image.mediaType as ImageBlockParam['source']['media_type'],
-        data: image.base64,
-      },
-    },
-    { type: 'text', text: prompt },
-  ]
-
-  const resp = await client.messages.create({
+  const completion = await client.chat.completions.create({
     model: VISION_MODEL,
-    max_tokens: 2000,
-    messages: [{ role: 'user', content }],
+    response_format: { type: 'json_object' },
+    max_tokens: 1000,
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: prompt },
+          {
+            type: 'image_url',
+            image_url: { url: `data:${image.mediaType};base64,${image.base64}` },
+          },
+        ],
+      },
+    ],
   })
 
-  let text = ''
-  for (const block of resp.content) {
-    if (block.type === 'text') text += block.text
-  }
-  text = text.trim()
-  if (text.startsWith('```')) {
-    text = text.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim()
-  }
+  const text = completion.choices[0]?.message?.content || '{}'
 
   try {
     const parsed = JSON.parse(text) as Record<string, unknown>
@@ -109,6 +102,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (!requireServiceRole(res)) return
 
   let opId: string | null = null
+  console.log('[w-x-f] start')
   try {
     const { userId } = await authenticateUser(req)
     const { word_path, word_filename, excel_path, excel_filename } = req.body as Record<string, string>
@@ -132,7 +126,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       })
     }
 
-    // Crear operation manualmente para meter ambos paths en metadata
     const admin = getSupabaseAdmin()
     const { data: opRow, error: opErr } = await admin
       .from('operations')
@@ -157,24 +150,27 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ])
 
     const images = await extractImagesFromDocx(wordBuf)
+    console.log('[w-x-f] images extracted:', images.length)
     if (images.length === 0) {
       throw new Error('El .docx no tiene imágenes embebidas')
     }
 
     const headers = await readHeadersFromXlsx(excelBuf)
+    console.log('[w-x-f] headers read:', headers)
 
-    if (!process.env.ANTHROPIC_API_KEY) {
-      throw new Error('ANTHROPIC_API_KEY no configurada')
-    }
-    const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
+    const client = getOpenAI()
 
     const rows: FillRow[] = []
-    for (const img of images) {
-      const row = await fillRowFromImage(client, img, headers)
+    for (let i = 0; i < images.length; i++) {
+      console.log('[w-x-f] calling OpenAI for image', i + 1, '/', images.length)
+      const t0 = Date.now()
+      const row = await fillRowFromImage(client, images[i], headers)
+      const ms = Date.now() - t0
+      console.log('[w-x-f] OpenAI returned for image', i + 1, 'in', ms, 'ms')
       rows.push(row)
     }
 
-    // Construir Excel de salida
+    console.log('[w-x-f] building output xlsx')
     const wb = new ExcelJS.Workbook()
     const ws = wb.addWorksheet('Resultados')
     ws.columns = headers.map(h => ({ header: h, key: h, width: 22 }))
@@ -189,6 +185,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       outBuf,
       'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
     )
+    console.log('[w-x-f] uploaded to storage')
 
     const costEstimate = images.length * COST_PER_IMAGE_USD
     await completeOperation(opId, outPath, outFilename, {
@@ -198,10 +195,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       images_count: images.length,
       cost_estimate_usd: costEstimate,
     })
-    // costo aparte en columna numérica (no afecta a metadata)
     await admin.from('operations').update({ cost_estimate: costEstimate }).eq('id', opId)
 
     const downloadUrl = await getSignedDownloadUrl(outPath)
+    console.log('[w-x-f] done')
     return res.status(200).json({
       success: true,
       output_filename: outFilename,
@@ -211,6 +208,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   } catch (e) {
     console.error('word-excel-fill error:', e)
+    const mapped = mapOpenAIError(e)
+    if (mapped) {
+      if (opId) await failOperation(opId, mapped.message).catch(() => {})
+      return res.status(mapped.status).json({ error: mapped.message })
+    }
     const msg = e instanceof Error ? e.message : 'Error desconocido'
     if (opId) await failOperation(opId, msg).catch(() => {})
     return res.status(500).json({ error: msg })

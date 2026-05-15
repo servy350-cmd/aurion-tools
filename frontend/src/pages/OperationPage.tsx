@@ -86,7 +86,7 @@ export default function OperationPage({ profile }: { profile: Profile }) {
   const handleProcess = async () => {
     if (!file || !type) return
     setStatus('uploading')
-    setProgress('Subiendo archivo…')
+    setProgress('Subiendo archivo...')
     setErrorMsg(null)
 
     try {
@@ -105,12 +105,12 @@ export default function OperationPage({ profile }: { profile: Profile }) {
       })
       if (uploadErr) throw new Error(`Error subiendo: ${uploadErr.message}`)
 
-      // 2) Llamar al endpoint del backend con timeout 60s
+      // 2) Llamar al endpoint del backend con timeout 3 min
       setStatus('processing')
-      setProgress('Procesando con IA…')
+      setProgress('Procesando con IA, esto puede tardar 30s a 2 min...')
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60_000)
+      const timeoutId = setTimeout(() => controller.abort(), 180_000)
 
       let res: Response
       try {

@@ -87,7 +87,7 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
   const handleProcess = async () => {
     if (!wordFile || !excelFile) return
     setStatus('uploading')
-    setProgress('Subiendo archivos…')
+    setProgress('Subiendo archivos...')
     setErrorMsg(null)
 
     try {
@@ -115,10 +115,10 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
       if (u2.error) throw new Error(`Error subiendo Excel: ${u2.error.message}`)
 
       setStatus('processing')
-      setProgress('Procesando con IA…')
+      setProgress('Procesando con IA, esto puede tardar 30s a 2 min...')
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 60_000)
+      const timeoutId = setTimeout(() => controller.abort(), 180_000)
 
       let res: Response
       try {

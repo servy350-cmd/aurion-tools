@@ -1,15 +1,15 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node'
 import { createClient } from '@supabase/supabase-js'
-import Anthropic from '@anthropic-ai/sdk'
+import OpenAI from 'openai'
 import { isServiceRoleAvailable } from './_lib/supabase'
 
 type ServiceCheck = { ok: boolean; detail?: string }
 
 export default async function handler(_req: VercelRequest, res: VercelResponse) {
-  const services: Record<'supabase' | 'libreoffice' | 'anthropic', ServiceCheck> = {
+  const services: Record<'supabase' | 'libreoffice' | 'openai', ServiceCheck> = {
     supabase: { ok: false },
     libreoffice: { ok: false },
-    anthropic: { ok: false },
+    openai: { ok: false },
   }
 
   // Supabase — anon key, solo verifica conectividad (RLS filtrará la query)
@@ -38,31 +38,22 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
     services.libreoffice = { ok: false, detail: e instanceof Error ? e.message : String(e) }
   }
 
-  // Anthropic — ping trivial a /v1/messages. ok = API alcanzable + key autenticó.
-  // Errores 4xx no-auth (validación, balance bajo, rate limit) cuentan como ok:
-  // significan que llegamos al API y la key es válida. Solo 401/403 marcan failure.
+  // OpenAI — ping a /v1/models con timeout 3s. 401 = auth fail; cualquier
+  // otro error = API alcanzable + key válida (lo tratamos como ok).
   try {
-    if (!process.env.ANTHROPIC_API_KEY) {
-      services.anthropic = { ok: false, detail: 'missing ANTHROPIC_API_KEY' }
+    if (!process.env.OPENAI_API_KEY) {
+      services.openai = { ok: false, detail: 'missing OPENAI_API_KEY' }
     } else {
-      const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY })
-      const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7'
+      const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY, timeout: 3000 })
       try {
-        await client.messages.create(
-          {
-            model,
-            max_tokens: 1,
-            messages: [{ role: 'user', content: 'hi' }],
-          },
-          { timeout: 8000 }
-        )
-        services.anthropic = { ok: true }
+        await client.models.list()
+        services.openai = { ok: true }
       } catch (apiErr) {
-        if (apiErr instanceof Anthropic.APIError) {
-          if (apiErr.status === 401 || apiErr.status === 403) {
-            services.anthropic = { ok: false, detail: `auth: HTTP ${apiErr.status}` }
+        if (apiErr instanceof OpenAI.APIError) {
+          if (apiErr.status === 401) {
+            services.openai = { ok: false, detail: 'auth: HTTP 401' }
           } else {
-            services.anthropic = { ok: true, detail: `api reachable (HTTP ${apiErr.status})` }
+            services.openai = { ok: true, detail: `api reachable (HTTP ${apiErr.status})` }
           }
         } else {
           throw apiErr
@@ -70,10 +61,10 @@ export default async function handler(_req: VercelRequest, res: VercelResponse) 
       }
     }
   } catch (e) {
-    services.anthropic = { ok: false, detail: e instanceof Error ? e.message : String(e) }
+    services.openai = { ok: false, detail: e instanceof Error ? e.message : String(e) }
   }
 
-  const ok = services.supabase.ok && services.libreoffice.ok && services.anthropic.ok
+  const ok = services.supabase.ok && services.libreoffice.ok && services.openai.ok
   return res.status(ok ? 200 : 503).json({
     ok,
     services,

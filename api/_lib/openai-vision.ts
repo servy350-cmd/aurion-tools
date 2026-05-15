@@ -1,25 +1,20 @@
 /**
- * Helper para Claude API (Vision): extrae datos de fotos.
+ * Helper de visión usando OpenAI (gpt-4o-mini): extrae datos de fotos de equipos.
+ * Reemplaza la implementación previa con Claude Vision.
  */
-import Anthropic from '@anthropic-ai/sdk'
-import type { ImageBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
+import { getOpenAI } from './openai'
 
-type MessageContentBlock = ImageBlockParam | TextBlockParam
-
-const apiKey = process.env.ANTHROPIC_API_KEY!
-const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7'
-
+const MODEL = 'gpt-4o-mini'
 const NO_INFO = 'Informacion no disponible en foto'
 
 const PROMPT = `Eres un experto en lectura de placas de equipos y documentos técnicos.
 
-Analiza TODAS las imágenes del documento adjunto y extrae los datos de cada equipo
-o ítem que veas.
+Analiza TODAS las imágenes adjuntas y extrae los datos de cada equipo o ítem que veas.
 
 REGLAS ESTRICTAS:
 
 1. Identifica cada equipo único por su UNIT ID (ej: AC-9, CH-1, RTU-3).
-   Si la misma unidad aparece en varias fotos, agrúpalas y produce UNA SOLA fila por UNIT ID.
+   Si la misma unidad aparece en varias fotos, agrúpalas y produce UNA SOLA entrada por UNIT ID.
 
 2. Para cada equipo extrae:
    - unit_id
@@ -41,7 +36,7 @@ REGLAS ESTRICTAS:
 
 5. Condición: year >= 2015 → "GOOD"; resto → "FAIR"; default si no se sabe → "FAIR".
 
-6. Devuelve SOLO JSON válido con esta estructura, sin markdown:
+6. Responde SOLO un objeto JSON válido. Sin markdown ni texto adicional. Estructura:
 {
   "equipos": [
     {
@@ -58,8 +53,7 @@ REGLAS ESTRICTAS:
       "condition": "FAIR"
     }
   ]
-}
-`
+}`
 
 export type Equipment = {
   unit_id: string
@@ -78,36 +72,29 @@ export type Equipment = {
 export async function extractEquipmentFromImages(
   images: { mediaType: string; base64: string }[]
 ): Promise<Equipment[]> {
-  const client = new Anthropic({ apiKey })
+  const client = getOpenAI()
   const allEquipment: Record<string, Equipment> = {}
 
-  const BATCH = 15
+  const BATCH = 10
   for (let i = 0; i < images.length; i += BATCH) {
     const batch = images.slice(i, i + BATCH)
-    const content: MessageContentBlock[] = batch.map<ImageBlockParam>(img => ({
-      type: 'image',
-      source: {
-        type: 'base64',
-        media_type: img.mediaType as ImageBlockParam['source']['media_type'],
-        data: img.base64,
-      },
+    const content: Array<
+      | { type: 'text'; text: string }
+      | { type: 'image_url'; image_url: { url: string } }
+    > = batch.map(img => ({
+      type: 'image_url' as const,
+      image_url: { url: `data:${img.mediaType};base64,${img.base64}` },
     }))
     content.push({ type: 'text', text: PROMPT })
 
-    const resp = await client.messages.create({
-      model,
-      max_tokens: 4000,
+    const completion = await client.chat.completions.create({
+      model: MODEL,
+      response_format: { type: 'json_object' },
+      max_tokens: 2000,
       messages: [{ role: 'user', content }],
     })
 
-    let text = ''
-    for (const block of resp.content) {
-      if (block.type === 'text') text += block.text
-    }
-    text = text.trim()
-    if (text.startsWith('```')) {
-      text = text.replace(/^```(?:json)?\s*/, '').replace(/```\s*$/, '').trim()
-    }
+    const text = completion.choices[0]?.message?.content || '{}'
 
     try {
       const data = JSON.parse(text)
@@ -115,7 +102,6 @@ export async function extractEquipmentFromImages(
         const uid = eq.unit_id || ''
         if (!uid) continue
         if (allEquipment[uid]) {
-          // merge: si lo nuevo tiene info útil donde antes había NO_INFO, sobreescribe
           for (const k of Object.keys(eq)) {
             const key = k as keyof Equipment
             if (allEquipment[uid][key] === NO_INFO && eq[key] !== NO_INFO) {
@@ -127,7 +113,7 @@ export async function extractEquipmentFromImages(
         }
       }
     } catch (e) {
-      console.error('Error parseando respuesta de Claude:', e, 'texto:', text.slice(0, 200))
+      console.error('Error parseando respuesta de OpenAI:', e, 'texto:', text.slice(0, 200))
     }
   }
 

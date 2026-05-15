@@ -17,13 +17,17 @@ import {
   uploadToStorage,
   getSignedDownloadUrl,
   requireServiceRole,
+  getSupabaseAdmin,
 } from '../_lib/supabase'
-import { extractEquipmentFromImages } from '../_lib/claude'
+import { extractEquipmentFromImages } from '../_lib/openai-vision'
+import { mapOpenAIError } from '../_lib/openai'
 import {
   extractImagesFromDocx,
   extractImagesFromPdf,
   imageBufferToBase64,
 } from '../_lib/images'
+
+const COST_PER_IMAGE_USD = 0.002
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
@@ -112,10 +116,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     )
 
     // Completar operación
+    const costEstimate = images.length * COST_PER_IMAGE_USD
     await completeOperation(opId, outputPath, outputFilename, {
       equipos_count: equipos.length,
       images_count: images.length,
+      cost_estimate_usd: costEstimate,
     })
+    await getSupabaseAdmin().from('operations').update({ cost_estimate: costEstimate }).eq('id', opId)
 
     const downloadUrl = await getSignedDownloadUrl(outputPath)
     return res.status(200).json({
@@ -126,6 +133,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     })
   } catch (e) {
     console.error('photo-extract error:', e)
+    const mapped = mapOpenAIError(e)
+    if (mapped) {
+      if (opId) await failOperation(opId, mapped.message).catch(() => {})
+      return res.status(mapped.status).json({ error: mapped.message })
+    }
     const msg = e instanceof Error ? e.message : 'Error desconocido'
     if (opId) await failOperation(opId, msg).catch(() => {})
     return res.status(500).json({ error: msg })
