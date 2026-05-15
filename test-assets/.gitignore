@@ -1,0 +1,4 @@
+# Archivos de prueba locales: no se commitean
+*
+!.gitignore
+!README.md

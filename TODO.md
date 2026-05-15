@@ -1,16 +1,15 @@
 # AURION Tools — TODO / blockers conocidos
 
-## 🔐 SUPABASE_SERVICE_ROLE_KEY local
+## ⏳ Pendientes
 
-El `.env` local NO tiene la `service_role` key porque ningún MCP la expone (es el
-secreto raíz de Supabase). Para que las funciones de backend funcionen con
-`vercel dev` localmente, cópiala manualmente desde:
-
-- Dashboard: https://supabase.com/dashboard/project/tqcjesaqermwkccgdtoz/settings/api
-- Sección **Project API Keys** → **service_role** → botón *Reveal*.
-- Pégala en `.env` después de `SUPABASE_SERVICE_ROLE_KEY=`.
-
-En **producción** (Vercel) ya está configurada — verificado con `vercel env ls`.
+- [ ] **Pegar `SUPABASE_SERVICE_ROLE_KEY` en `.env` local cuando se necesite
+      probar backend con `vercel dev`.**
+      - Origen: https://supabase.com/dashboard/project/tqcjesaqermwkccgdtoz/settings/api
+      - Sección **Project API Keys** → **service_role** → botón *Reveal*.
+      - Ningún MCP la expone (es el secreto raíz de Supabase). Debe pegarse
+        a mano en `.env` después de `SUPABASE_SERVICE_ROLE_KEY=`.
+      - En **producción** (Vercel) ya está configurada — verificado con
+        `vercel env ls`. Esta tarea es **solo** para dev local.
 
 ## 🌿 Vercel — Preview environment vars no configuradas
 
