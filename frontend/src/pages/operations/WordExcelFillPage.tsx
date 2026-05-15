@@ -93,9 +93,9 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
     // Progreso narrado por timers — independiente del estado interno.
     const progressTimers: ReturnType<typeof setTimeout>[] = []
     progressTimers.push(setTimeout(() => setProgress('Analizando documento Word...'), 3_000))
-    progressTimers.push(setTimeout(() => setProgress('Procesando imágenes con IA, esto puede tardar 30–90 segundos...'), 8_000))
-    progressTimers.push(setTimeout(() => setProgress('Casi listo, generando Excel...'), 25_000))
-    progressTimers.push(setTimeout(() => setProgress('Esto está tardando más de lo normal, espera un momento...'), 90_000))
+    progressTimers.push(setTimeout(() => setProgress('Procesando imágenes con IA, procesamiento por lotes para evitar saturar la API...'), 30_000))
+    progressTimers.push(setTimeout(() => setProgress('Procesando lote siguiente, esto es normal con muchas imágenes...'), 90_000))
+    progressTimers.push(setTimeout(() => setProgress('Casi listo...'), 180_000))
     const clearProgressTimers = () => {
       progressTimers.forEach(clearTimeout)
       progressTimers.length = 0
@@ -128,7 +128,7 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
       setStatus('processing')
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 180_000)
+      const timeoutId = setTimeout(() => controller.abort(), 300_000)
 
       let res: Response
       try {

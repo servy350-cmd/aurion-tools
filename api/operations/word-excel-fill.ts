@@ -49,6 +49,30 @@ async function readHeadersFromXlsx(buffer: Buffer): Promise<string[]> {
   return headers
 }
 
+async function callOpenAIWithRetry(
+  client: OpenAI,
+  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  maxRetries = 5
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  let lastError: unknown
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await client.chat.completions.create(params)
+    } catch (err) {
+      lastError = err
+      const status = (err as { status?: number }).status
+      const code = (err as { code?: string }).code
+      const isRateLimit = status === 429 || code === 'rate_limit_exceeded'
+      const isQuotaExhausted = code === 'insufficient_quota'
+      if (!isRateLimit || isQuotaExhausted) throw err
+      const waitMs = Math.min(2000 * Math.pow(2, attempt), 32000)
+      console.log(`[w-x-f] rate limit, retry ${attempt + 1}/${maxRetries} in ${waitMs}ms`)
+      await new Promise(r => setTimeout(r, waitMs))
+    }
+  }
+  throw lastError
+}
+
 async function fillRowFromImage(
   client: OpenAI,
   image: { mediaType: string; base64: string },
@@ -59,7 +83,7 @@ async function fillRowFromImage(
     `${JSON.stringify(headers)}. Si algún campo no se ve en la imagen, ponlo como null. ` +
     `Responde SOLO un objeto JSON válido. Sin markdown ni texto adicional.`
 
-  const completion = await client.chat.completions.create({
+  const completion = await callOpenAIWithRetry(client, {
     model: VISION_MODEL,
     response_format: { type: 'json_object' },
     max_tokens: 1000,
@@ -160,30 +184,59 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const client = getOpenAI()
 
-    // Paralelizamos las llamadas a OpenAI con Promise.allSettled: el tiempo
-    // total queda ≈ el de la imagen más lenta, no la suma. Si una falla, las
-    // demás siguen y la fila correspondiente queda con "ERROR: <razón>".
-    const tasks = images.map(async (img, i) => {
-      console.log('[w-x-f] image', i, 'started')
-      const t0 = Date.now()
-      try {
-        const row = await fillRowFromImage(client, img, headers)
-        console.log('[w-x-f] image', i, 'completed in', Date.now() - t0, 'ms')
-        return row
-      } catch (err) {
-        console.error('[w-x-f] image', i, 'failed in', Date.now() - t0, 'ms:', err)
-        throw err
-      }
-    })
+    // OpenAI tier 1 = 3 RPM. Procesamos en lotes con espera entre lotes y
+    // retry exponencial dentro de cada llamada para absorber 429.
+    const BATCH_SIZE = 3
+    const BATCH_DELAY_MS = 1500
 
-    const settled = await Promise.allSettled(tasks)
-    const rows: FillRow[] = settled.map(r => {
-      if (r.status === 'fulfilled') return r.value
-      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason)
-      const errRow: FillRow = {}
-      for (const h of headers) errRow[h] = `ERROR: ${reason}`
-      return errRow
+    console.log('[w-x-f] total images:', images.length, 'batch size:', BATCH_SIZE)
+    console.log('[w-x-f] estimated time:', Math.ceil(images.length / BATCH_SIZE) * 4, 'seconds')
+
+    type ResultItem =
+      | { ok: true; index: number; row: FillRow }
+      | { ok: false; index: number; error: string }
+    const results: ResultItem[] = []
+
+    for (let i = 0; i < images.length; i += BATCH_SIZE) {
+      const batch = images.slice(i, i + BATCH_SIZE)
+      const batchNum = Math.floor(i / BATCH_SIZE) + 1
+      const totalBatches = Math.ceil(images.length / BATCH_SIZE)
+      console.log(
+        '[w-x-f] processing batch',
+        batchNum,
+        '/',
+        totalBatches,
+        '(' + batch.length + ' images)',
+      )
+      const batchResults = await Promise.all(
+        batch.map(async (img, idx): Promise<ResultItem> => {
+          const globalIdx = i + idx
+          const t0 = Date.now()
+          console.log('[w-x-f] image', globalIdx, 'started')
+          try {
+            const row = await fillRowFromImage(client, img, headers)
+            console.log('[w-x-f] image', globalIdx, 'completed in', Date.now() - t0, 'ms')
+            return { ok: true, index: globalIdx, row }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err)
+            console.error('[w-x-f] image', globalIdx, 'failed:', msg)
+            return { ok: false, index: globalIdx, error: msg }
+          }
+        }),
+      )
+      results.push(...batchResults)
+      if (i + BATCH_SIZE < images.length) {
+        await new Promise(r => setTimeout(r, BATCH_DELAY_MS))
+      }
+    }
+
+    const rows: FillRow[] = results.map(r => {
+      if (r.ok) return r.row
+      const empty: FillRow = {}
+      for (const h of headers) empty[h] = null
+      return empty
     })
+    const failures = results.filter((r): r is Extract<ResultItem, { ok: false }> => !r.ok)
 
     console.log('[w-x-f] building output xlsx')
     const wb = new ExcelJS.Workbook()
@@ -191,6 +244,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     ws.columns = headers.map(h => ({ header: h, key: h, width: 22 }))
     ws.getRow(1).font = { bold: true }
     for (const row of rows) ws.addRow(row)
+
+    if (failures.length > 0) {
+      const errSheet = wb.addWorksheet('Errores')
+      errSheet.columns = [
+        { header: 'imagen', key: 'index', width: 12 },
+        { header: 'razon', key: 'error', width: 80 },
+      ]
+      errSheet.getRow(1).font = { bold: true }
+      for (const f of failures) {
+        errSheet.addRow({ index: f.index, error: f.error })
+      }
+    }
 
     const outBuf = Buffer.from(await wb.xlsx.writeBuffer())
     const outFilename = `${excel_filename.replace(/\.[^/.]+$/, '')}_rellenado.xlsx`
