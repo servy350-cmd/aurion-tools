@@ -18,6 +18,8 @@ type OperationType =
   | 'pdf_to_excel'
   | 'word_to_pdf'
   | 'excel_to_pdf'
+  | 'word_excel_fill'
+  | 'universal_extract'
 
 const OPERATION_TYPES: OperationType[] = [
   'photo_extract',
@@ -25,6 +27,8 @@ const OPERATION_TYPES: OperationType[] = [
   'pdf_to_excel',
   'word_to_pdf',
   'excel_to_pdf',
+  'word_excel_fill',
+  'universal_extract',
 ]
 
 const OP_LABELS: Record<OperationType, string> = {
@@ -33,6 +37,8 @@ const OP_LABELS: Record<OperationType, string> = {
   pdf_to_excel: 'PDF → Excel',
   word_to_pdf: 'Word → PDF',
   excel_to_pdf: 'Excel → PDF',
+  word_excel_fill: 'Word+Excel Fill',
+  universal_extract: 'Extracción Universal',
 }
 
 const OP_BADGE: Record<OperationType, string> = {
@@ -41,6 +47,8 @@ const OP_BADGE: Record<OperationType, string> = {
   pdf_to_excel: 'bg-emerald-500/20 text-emerald-300',
   word_to_pdf: 'bg-orange-500/20 text-orange-300',
   excel_to_pdf: 'bg-yellow-500/20 text-yellow-300',
+  word_excel_fill: 'bg-violet-500/20 text-violet-300',
+  universal_extract: 'bg-fuchsia-500/20 text-fuchsia-300',
 }
 
 const STATUS_BADGE: Record<string, string> = {
@@ -80,6 +88,8 @@ const ZERO_COUNTS = (): OpCounts => ({
   pdf_to_excel: 0,
   word_to_pdf: 0,
   excel_to_pdf: 0,
+  word_excel_fill: 0,
+  universal_extract: 0,
 })
 
 function startOfMonthISO(): string {
@@ -311,6 +321,8 @@ export default function AdminPage({ profile }: { profile: Profile }) {
                       <th className="px-4 py-3 font-medium text-center" title="PDF → Excel">P→E</th>
                       <th className="px-4 py-3 font-medium text-center" title="Word → PDF">W→P</th>
                       <th className="px-4 py-3 font-medium text-center" title="Excel → PDF">E→P</th>
+                      <th className="px-4 py-3 font-medium text-center" title="Word + Excel Fill">W+E</th>
+                      <th className="px-4 py-3 font-medium text-center" title="Extracción Universal">Univ</th>
                       <th className="px-4 py-3 font-medium text-center">Total</th>
                     </tr>
                   </thead>
@@ -348,7 +360,7 @@ export default function AdminPage({ profile }: { profile: Profile }) {
                     ))}
                     {users.length === 0 && (
                       <tr>
-                        <td colSpan={10} className="px-4 py-6 text-center text-slate-500">
+                        <td colSpan={12} className="px-4 py-6 text-center text-slate-500">
                           Sin usuarios todavía.
                         </td>
                       </tr>

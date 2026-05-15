@@ -39,7 +39,15 @@ const ACCEPTED_MASTER = {
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['.xlsx'],
 }
 
-type Status = 'idle' | 'running' | 'done' | 'error'
+type Status = 'idle' | 'running' | 'awaiting_clarification' | 'done' | 'error'
+
+type UploadedPaths = {
+  filePaths: string[]
+  fileNames: string[]
+  masterPath?: string
+  masterName?: string
+  accessToken: string
+}
 
 export default function UniversalExtractPage({ profile }: { profile: Profile }) {
   const [files, setFiles] = useState<File[]>([])
@@ -52,6 +60,9 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null)
   const [outputName, setOutputName] = useState<string | null>(null)
   const [summary, setSummary] = useState<{ total: number; added: number; updated: number; review: number } | null>(null)
+  const [uploaded, setUploaded] = useState<UploadedPaths | null>(null)
+  const [clarificationQuestion, setClarificationQuestion] = useState<string | null>(null)
+  const [clarificationAnswer, setClarificationAnswer] = useState('')
 
   useEffect(() => {
     if (status !== 'idle') return
@@ -89,6 +100,66 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
     setDownloadUrl(null)
     setOutputName(null)
     setSummary(null)
+    setUploaded(null)
+    setClarificationQuestion(null)
+    setClarificationAnswer('')
+  }
+
+  const runPipeline = async (effectiveInstruction: string, paths: UploadedPaths) => {
+    setStatus('running')
+    setClarificationQuestion(null)
+    setErrorMsg(null)
+
+    let completed = false
+    let errored = false
+    let clarificationFired = false
+    try {
+      for await (const ev of streamSSE('/api/operations/universal-extract', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${paths.accessToken}`,
+        },
+        body: JSON.stringify({
+          file_paths: paths.filePaths,
+          file_names: paths.fileNames,
+          instruction: effectiveInstruction,
+          master_excel_path: paths.masterPath,
+          master_excel_name: paths.masterName,
+        }),
+      })) {
+        setEvents(prev => [...prev, { ...ev, ts: Date.now() }])
+        if (ev.type === 'clarification_needed') {
+          clarificationFired = true
+          setClarificationQuestion(String(ev.question))
+          setStatus('awaiting_clarification')
+        }
+        if (ev.type === 'completed') {
+          completed = true
+          setDownloadUrl(String(ev.download_url))
+          setOutputName(String(ev.output_filename))
+          setSummary({
+            total: Number(ev.total_records || 0),
+            added: Number(ev.added || 0),
+            updated: Number(ev.updated || 0),
+            review: Number(ev.review_required || 0),
+          })
+          setStatus('done')
+        }
+        if (ev.type === 'error') {
+          errored = true
+          setErrorMsg(String(ev.message))
+          setStatus('error')
+        }
+      }
+      if (!completed && !errored && !clarificationFired) {
+        setStatus('error')
+        setErrorMsg('El servidor cerró la conexión sin completar.')
+      }
+    } catch (e) {
+      setStatus('error')
+      setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
+    }
   }
 
   const handleProcess = async () => {
@@ -98,6 +169,7 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
     setErrorMsg(null)
     setDownloadUrl(null)
     setSummary(null)
+    setClarificationQuestion(null)
 
     try {
       const { data: { session } } = await supabase.auth.getSession()
@@ -105,7 +177,6 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
       const userId = session.user.id
       const ts = Date.now()
 
-      // Subir todos los archivos en paralelo
       const filePaths: string[] = []
       const fileNames: string[] = []
       const uploadResults = await Promise.all(
@@ -135,45 +206,31 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
         if (r.error) throw new Error(`Error subiendo maestro: ${r.error.message}`)
       }
 
-      // SSE
-      for await (const ev of streamSSE('/api/operations/universal-extract', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          file_paths: filePaths,
-          file_names: fileNames,
-          instruction: instruction.trim(),
-          master_excel_path: masterPath,
-          master_excel_name: masterName,
-        }),
-      })) {
-        setEvents(prev => [...prev, { ...ev, ts: Date.now() }])
-        if (ev.type === 'completed') {
-          setDownloadUrl(String(ev.download_url))
-          setOutputName(String(ev.output_filename))
-          setSummary({
-            total: Number(ev.total_records || 0),
-            added: Number(ev.added || 0),
-            updated: Number(ev.updated || 0),
-            review: Number(ev.review_required || 0),
-          })
-          setStatus('done')
-        }
-        if (ev.type === 'error') {
-          setErrorMsg(String(ev.message))
-          setStatus('error')
-        }
+      const paths: UploadedPaths = {
+        filePaths,
+        fileNames,
+        masterPath,
+        masterName,
+        accessToken: session.access_token,
       }
-      // Si el stream cerró sin completed ni error
-      setStatus(s => (s === 'running' ? 'error' : s))
-      setErrorMsg(prev => prev ?? (status === 'running' ? 'El servidor cerró la conexión sin completar.' : prev))
+      setUploaded(paths)
+      await runPipeline(instruction.trim(), paths)
     } catch (e) {
       setStatus('error')
       setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
     }
+  }
+
+  const handleAnswerClarification = async () => {
+    if (!uploaded || !clarificationAnswer.trim()) return
+    const newInstruction = `${instruction.trim()} | Aclaración: ${clarificationAnswer.trim()}`
+    setInstruction(newInstruction)
+    setEvents(prev => [
+      ...prev,
+      { type: 'separator', text: '── reintentando con aclaración ──', ts: Date.now() },
+    ])
+    setClarificationAnswer('')
+    await runPipeline(newInstruction, uploaded)
   }
 
   const canProcess = files.length > 0 && instruction.trim().length > 0 && status === 'idle'
@@ -277,9 +334,36 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
           </>
         )}
 
-        {(status === 'running' || status === 'done' || status === 'error') && (
+        {(status === 'running' || status === 'awaiting_clarification' || status === 'done' || status === 'error') && (
           <>
             <StreamingProgress events={events} />
+
+            {status === 'awaiting_clarification' && clarificationQuestion && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-6">
+                <div className="flex items-start gap-3 mb-4">
+                  <AlertCircle className="w-7 h-7 text-amber-400 shrink-0 mt-0.5" />
+                  <div className="flex-1">
+                    <h2 className="text-lg font-semibold text-white">Necesito una aclaración</h2>
+                    <p className="text-slate-300 text-sm mt-1">{clarificationQuestion}</p>
+                  </div>
+                </div>
+                <input
+                  type="text"
+                  value={clarificationAnswer}
+                  onChange={e => setClarificationAnswer(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') handleAnswerClarification() }}
+                  placeholder="Escribe tu aclaración..."
+                  className="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2 text-white placeholder:text-slate-500 focus:border-amber-500 focus:outline-none mb-3"
+                />
+                <button
+                  onClick={handleAnswerClarification}
+                  disabled={!clarificationAnswer.trim()}
+                  className="bg-amber-500 hover:bg-amber-600 disabled:bg-slate-800 disabled:text-slate-500 disabled:cursor-not-allowed text-white font-medium rounded-lg px-4 py-2 transition"
+                >
+                  Responder y continuar
+                </button>
+              </div>
+            )}
 
             {status === 'done' && downloadUrl && summary && (
               <div className="bg-green-500/10 border border-green-500/30 rounded-2xl p-6">

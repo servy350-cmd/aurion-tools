@@ -98,23 +98,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     emit(res, { type: 'started', files: names.length, has_master: !!body.master_excel_path })
 
-    // Registrar operación
     const admin = getSupabaseAdmin()
-    const { data: opRow } = await admin
-      .from('operations')
-      .insert({
-        user_id: userId,
-        operation_type: 'universal_extract',
-        status: 'processing',
-        input_file: paths[0],
-        input_filename: names.join(', '),
-        metadata: { instruction, file_count: paths.length, master: body.master_excel_name || null },
-      })
-      .select('id')
-      .single()
-    opId = (opRow?.id as string) || null
 
-    // 1) Parseo de intent
+    // 1) Parseo de intent (ANTES de insertar la operación — si pide aclaración
+    //    o falla, no contamina la tabla de operaciones ni gasta cuota)
     emit(res, { type: 'intent_parsing', instruction })
     const intent = await parseIntent(instruction)
     if (intent.confidence === 'low' && intent.clarification_needed) {
@@ -123,11 +110,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         question: intent.clarification_needed,
         detected_schema: intent.detected_schema,
       })
-      // Devolvemos lo que tenemos por si el cliente quiere continuar; cierra
+      // Sin insert → no cuenta en cuota, no deja row huérfano
       return res.end()
     }
     let schema = intent.detected_schema
     emit(res, { type: 'schema_detected', schema })
+
+    // Registrar operación (recién aquí, después de pasar intent parsing)
+    const { data: opRow } = await admin
+      .from('operations')
+      .insert({
+        user_id: userId,
+        operation_type: 'universal_extract',
+        status: 'processing',
+        input_file: paths[0],
+        input_filename: names.join(', '),
+        metadata: { instruction, file_count: paths.length, master: body.master_excel_name || null, schema },
+      })
+      .select('id')
+      .single()
+    opId = (opRow?.id as string) || null
 
     // 2) Descargar + parsear archivos
     const parsed: ParsedFile[] = []

@@ -8,7 +8,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "lint": "eslint .",
-    "create-user": "tsx --env-file=.env scripts/create-user.ts"
+    "create-user": "tsx --env-file=.env scripts/create-user.ts",
+    "smoke:universal": "node --env-file=.env.local scripts/smoke-universal-extract.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.45.0",

@@ -45,6 +45,8 @@ function iconFor(type: string) {
       return AlertTriangle
     case 'chunk_failed':
       return XCircle
+    case 'separator':
+      return Sparkles
     default:
       return Sparkles
   }
@@ -55,6 +57,7 @@ function colorFor(type: string): string {
   if (type === 'error' || type === 'chunk_failed') return 'text-red-400'
   if (type === 'clarification_needed') return 'text-amber-400'
   if (type === 'record_found') return 'text-emerald-300'
+  if (type === 'separator') return 'text-slate-500 italic'
   return 'text-slate-300'
 }
 
@@ -95,6 +98,8 @@ function describe(ev: ProgressEvent): string {
       return `✓ ${ev.total_records} registros · ${ev.added} nuevos · ${ev.updated} actualizados · ${ev.review_required} en revisión`
     case 'error':
       return `Error: ${ev.message}`
+    case 'separator':
+      return String(ev.text || '──────────')
     default:
       return ev.type
   }
