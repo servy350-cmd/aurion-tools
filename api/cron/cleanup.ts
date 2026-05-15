@@ -5,7 +5,7 @@
  * Vercel cron envía:  Authorization: Bearer $CRON_SECRET
  */
 import type { VercelRequest, VercelResponse } from '@vercel/node'
-import { supabaseAdmin } from '../_lib/supabase'
+import { getSupabaseAdmin, requireServiceRole } from '../_lib/supabase'
 
 const RETENTION_DAYS = 7
 
@@ -16,9 +16,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(401).json({ error: 'Unauthorized' })
   }
 
+  if (!requireServiceRole(res)) return
+
+  const admin = getSupabaseAdmin()
   const cutoff = new Date(Date.now() - RETENTION_DAYS * 24 * 60 * 60 * 1000).toISOString()
 
-  const { data: oldOps, error: listErr } = await supabaseAdmin
+  const { data: oldOps, error: listErr } = await admin
     .from('operations')
     .select('id, input_file, output_file')
     .lt('created_at', cutoff)
@@ -35,16 +38,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   let filesDeleted = 0
   if (paths.length > 0) {
-    const { data: rmData, error: rmErr } = await supabaseAdmin.storage
-      .from('files')
-      .remove(paths)
+    const { data: rmData, error: rmErr } = await admin.storage.from('files').remove(paths)
     if (rmErr) {
       return res.status(500).json({ error: `storage remove: ${rmErr.message}` })
     }
     filesDeleted = rmData?.length || 0
   }
 
-  const { error: deleteErr, count } = await supabaseAdmin
+  const { error: deleteErr, count } = await admin
     .from('operations')
     .delete({ count: 'exact' })
     .lt('created_at', cutoff)

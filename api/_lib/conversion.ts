@@ -11,6 +11,7 @@ import {
   downloadFromStorage,
   uploadToStorage,
   getSignedDownloadUrl,
+  requireServiceRole,
 } from './supabase'
 import { convertFile, ConvertTarget } from './libreoffice'
 
@@ -23,6 +24,8 @@ export async function handleConversion(
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!requireServiceRole(res)) return
 
   let opId: string | null = null
   try {

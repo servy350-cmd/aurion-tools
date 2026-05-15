@@ -16,6 +16,7 @@ import {
   downloadFromStorage,
   uploadToStorage,
   getSignedDownloadUrl,
+  requireServiceRole,
 } from '../_lib/supabase'
 import { extractEquipmentFromImages } from '../_lib/claude'
 import {
@@ -28,6 +29,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== 'POST') {
     return res.status(405).json({ error: 'Method not allowed' })
   }
+
+  if (!requireServiceRole(res)) return
 
   let opId: string | null = null
   try {
