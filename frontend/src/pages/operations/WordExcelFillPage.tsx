@@ -90,6 +90,17 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
     setProgress('Subiendo archivos...')
     setErrorMsg(null)
 
+    // Progreso narrado por timers — independiente del estado interno.
+    const progressTimers: ReturnType<typeof setTimeout>[] = []
+    progressTimers.push(setTimeout(() => setProgress('Analizando documento Word...'), 3_000))
+    progressTimers.push(setTimeout(() => setProgress('Procesando imágenes con IA, esto puede tardar 30–90 segundos...'), 8_000))
+    progressTimers.push(setTimeout(() => setProgress('Casi listo, generando Excel...'), 25_000))
+    progressTimers.push(setTimeout(() => setProgress('Esto está tardando más de lo normal, espera un momento...'), 90_000))
+    const clearProgressTimers = () => {
+      progressTimers.forEach(clearTimeout)
+      progressTimers.length = 0
+    }
+
     try {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) throw new Error('Sesión expirada. Vuelve a iniciar sesión.')
@@ -115,7 +126,6 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
       if (u2.error) throw new Error(`Error subiendo Excel: ${u2.error.message}`)
 
       setStatus('processing')
-      setProgress('Procesando con IA, esto puede tardar 30s a 2 min...')
 
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 180_000)
@@ -158,11 +168,13 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
       }
 
       const result = await res.json()
+      clearProgressTimers()
       setDownloadUrl(result.download_url)
       setOutputName(result.output_filename)
       setStatus('done')
       setProgress('')
     } catch (e) {
+      clearProgressTimers()
       setStatus('error')
       setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
     }

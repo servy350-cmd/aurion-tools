@@ -160,15 +160,30 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const client = getOpenAI()
 
-    const rows: FillRow[] = []
-    for (let i = 0; i < images.length; i++) {
-      console.log('[w-x-f] calling OpenAI for image', i + 1, '/', images.length)
+    // Paralelizamos las llamadas a OpenAI con Promise.allSettled: el tiempo
+    // total queda ≈ el de la imagen más lenta, no la suma. Si una falla, las
+    // demás siguen y la fila correspondiente queda con "ERROR: <razón>".
+    const tasks = images.map(async (img, i) => {
+      console.log('[w-x-f] image', i, 'started')
       const t0 = Date.now()
-      const row = await fillRowFromImage(client, images[i], headers)
-      const ms = Date.now() - t0
-      console.log('[w-x-f] OpenAI returned for image', i + 1, 'in', ms, 'ms')
-      rows.push(row)
-    }
+      try {
+        const row = await fillRowFromImage(client, img, headers)
+        console.log('[w-x-f] image', i, 'completed in', Date.now() - t0, 'ms')
+        return row
+      } catch (err) {
+        console.error('[w-x-f] image', i, 'failed in', Date.now() - t0, 'ms:', err)
+        throw err
+      }
+    })
+
+    const settled = await Promise.allSettled(tasks)
+    const rows: FillRow[] = settled.map(r => {
+      if (r.status === 'fulfilled') return r.value
+      const reason = r.reason instanceof Error ? r.reason.message : String(r.reason)
+      const errRow: FillRow = {}
+      for (const h of headers) errRow[h] = `ERROR: ${reason}`
+      return errRow
+    })
 
     console.log('[w-x-f] building output xlsx')
     const wb = new ExcelJS.Workbook()
