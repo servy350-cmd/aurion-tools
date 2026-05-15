@@ -11,16 +11,18 @@
     "create-user": "tsx --env-file=.env scripts/create-user.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.32.1",
     "@supabase/supabase-js": "^2.45.0",
     "@zip.js/zip.js": "^2.7.52",
     "exceljs": "^4.4.0",
     "lucide-react": "^0.460.0",
+    "mammoth": "^1.12.0",
     "openai": "^6.37.0",
+    "pdf-parse": "^2.4.5",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "react-dropzone": "^14.2.10",
-    "react-router-dom": "^6.28.0"
+    "react-router-dom": "^6.28.0",
+    "sharp": "^0.34.5"
   },
   "devDependencies": {
     "@types/node": "^22.10.1",

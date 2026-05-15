@@ -45,6 +45,13 @@ const OPERATIONS = [
     icon: Sparkles,
     color: 'from-fuchsia-500 to-violet-500',
   },
+  {
+    type: 'universal-extract',
+    title: 'Extracción Universal',
+    description: 'Sube cualquier archivo y deja que la IA extraiga los datos en Excel. Streaming en tiempo real.',
+    icon: Sparkles,
+    color: 'from-fuchsia-600 to-purple-700',
+  },
 ]
 
 export default function DashboardPage({ profile }: { profile: Profile }) {

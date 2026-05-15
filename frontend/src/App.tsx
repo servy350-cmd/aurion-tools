@@ -7,6 +7,7 @@ import OperationPage from './pages/OperationPage'
 import HistoryPage from './pages/HistoryPage'
 import AdminPage from './pages/AdminPage'
 import WordExcelFillPage from './pages/operations/WordExcelFillPage'
+import UniversalExtractPage from './pages/operations/UniversalExtractPage'
 
 async function loadOrRecoverProfile(
   userId: string,
@@ -133,6 +134,7 @@ export default function App() {
     <Routes>
       <Route path="/login" element={profile ? <Navigate to="/" /> : <LoginPage />} />
       <Route path="/" element={profile ? <DashboardPage profile={profile} /> : <Navigate to="/login" />} />
+      <Route path="/op/universal-extract" element={profile ? <UniversalExtractPage profile={profile} /> : <Navigate to="/login" />} />
       <Route path="/op/word_excel_fill" element={profile ? <WordExcelFillPage profile={profile} /> : <Navigate to="/login" />} />
       <Route path="/op/:type" element={profile ? <OperationPage profile={profile} /> : <Navigate to="/login" />} />
       <Route path="/history" element={profile ? <HistoryPage profile={profile} /> : <Navigate to="/login" />} />
