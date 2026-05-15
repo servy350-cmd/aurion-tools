@@ -105,21 +105,43 @@ export default function OperationPage({ profile }: { profile: Profile }) {
       })
       if (uploadErr) throw new Error(`Error subiendo: ${uploadErr.message}`)
 
-      // 2) Llamar al endpoint del backend
+      // 2) Llamar al endpoint del backend con timeout 60s
       setStatus('processing')
       setProgress('Procesando con IA…')
 
-      const res = await fetch(`/api/operations/${type.replace(/_/g, '-')}`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.access_token}`,
-        },
-        body: JSON.stringify({
-          input_path: path,
-          input_filename: file.name,
-        }),
-      })
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 60_000)
+
+      let res: Response
+      try {
+        res = await fetch(`/api/operations/${type.replace(/_/g, '-')}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${session.access_token}`,
+          },
+          body: JSON.stringify({
+            input_path: path,
+            input_filename: file.name,
+          }),
+          signal: controller.signal,
+        })
+      } catch (fetchErr) {
+        if (fetchErr instanceof DOMException && fetchErr.name === 'AbortError') {
+          throw new Error('Tiempo de espera agotado, intenta de nuevo.')
+        }
+        throw fetchErr
+      } finally {
+        clearTimeout(timeoutId)
+      }
+
+      if (res.status === 503) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(
+          err.error ||
+          'Esta operación está deshabilitada porque falta configurar SUPABASE_SERVICE_ROLE_KEY en el servidor. Contacta al administrador.'
+        )
+      }
 
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))

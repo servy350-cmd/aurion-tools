@@ -1,6 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { Profile, supabase } from '../lib/supabase'
-import { Camera, FileText, FileSpreadsheet, FileOutput, History, LogOut, Crown, ShieldCheck } from 'lucide-react'
+import { Camera, FileText, FileSpreadsheet, FileOutput, Sparkles, History, LogOut, Crown, ShieldCheck } from 'lucide-react'
 
 const OPERATIONS = [
   {
@@ -37,6 +37,13 @@ const OPERATIONS = [
     description: 'Convierte una hoja Excel a PDF.',
     icon: FileOutput,
     color: 'from-yellow-500 to-amber-500',
+  },
+  {
+    type: 'word_excel_fill',
+    title: 'Rellenar Excel desde fotos en Word',
+    description: 'Sube un Word con imágenes y un Excel con la tabla destino. La IA llena el Excel con los datos de cada foto.',
+    icon: Sparkles,
+    color: 'from-fuchsia-500 to-violet-500',
   },
 ]
 
