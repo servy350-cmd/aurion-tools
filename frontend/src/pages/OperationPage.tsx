@@ -53,10 +53,23 @@ export default function OperationPage({ profile }: { profile: Profile }) {
   const [outputName, setOutputName] = useState<string | null>(null)
   const [errorMsg, setErrorMsg] = useState<string | null>(null)
 
+  const MAX_FILE_BYTES = 50 * 1024 * 1024
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     accept: config?.accept,
     multiple: false,
-    onDrop: accepted => {
+    maxSize: MAX_FILE_BYTES,
+    onDrop: (accepted, rejected) => {
+      if (rejected.length > 0) {
+        const tooBig = rejected[0].errors.some(e => e.code === 'file-too-large')
+        setStatus('error')
+        setErrorMsg(
+          tooBig
+            ? 'Archivo muy grande, máximo 50 MB.'
+            : 'Archivo rechazado: tipo no soportado o inválido.',
+        )
+        setFile(null)
+        return
+      }
       if (accepted.length > 0) {
         setFile(accepted[0])
         setStatus('idle')
@@ -118,9 +131,9 @@ export default function OperationPage({ profile }: { profile: Profile }) {
       setOutputName(result.output_filename)
       setStatus('done')
       setProgress('')
-    } catch (e: any) {
+    } catch (e) {
       setStatus('error')
-      setErrorMsg(e.message || 'Error desconocido')
+      setErrorMsg(e instanceof Error ? e.message : 'Error desconocido')
     }
   }
 

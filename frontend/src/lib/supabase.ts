@@ -32,7 +32,7 @@ export type Operation = {
   input_filename: string | null
   output_file: string | null
   output_filename: string | null
-  metadata: any
+  metadata: Record<string, unknown> | null
   error_message: string | null
   created_at: string
   completed_at: string | null

@@ -121,9 +121,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       download_url: downloadUrl,
       equipos_count: equipos.length,
     })
-  } catch (e: any) {
+  } catch (e) {
     console.error('photo-extract error:', e)
-    if (opId) await failOperation(opId, e.message || 'Error desconocido').catch(() => {})
-    return res.status(500).json({ error: e.message || 'Error desconocido' })
+    const msg = e instanceof Error ? e.message : 'Error desconocido'
+    if (opId) await failOperation(opId, msg).catch(() => {})
+    return res.status(500).json({ error: msg })
   }
 }

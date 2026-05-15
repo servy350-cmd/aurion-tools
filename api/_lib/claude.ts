@@ -2,6 +2,9 @@
  * Helper para Claude API (Vision): extrae datos de fotos.
  */
 import Anthropic from '@anthropic-ai/sdk'
+import type { ImageBlockParam, TextBlockParam } from '@anthropic-ai/sdk/resources/messages'
+
+type MessageContentBlock = ImageBlockParam | TextBlockParam
 
 const apiKey = process.env.ANTHROPIC_API_KEY!
 const model = process.env.CLAUDE_MODEL || 'claude-opus-4-7'
@@ -81,9 +84,13 @@ export async function extractEquipmentFromImages(
   const BATCH = 15
   for (let i = 0; i < images.length; i += BATCH) {
     const batch = images.slice(i, i + BATCH)
-    const content: any[] = batch.map(img => ({
+    const content: MessageContentBlock[] = batch.map<ImageBlockParam>(img => ({
       type: 'image',
-      source: { type: 'base64', media_type: img.mediaType, data: img.base64 },
+      source: {
+        type: 'base64',
+        media_type: img.mediaType as ImageBlockParam['source']['media_type'],
+        data: img.base64,
+      },
     }))
     content.push({ type: 'text', text: PROMPT })
 

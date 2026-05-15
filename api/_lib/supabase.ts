@@ -75,7 +75,7 @@ export async function completeOperation(
   opId: string,
   outputPath: string,
   outputFilename: string,
-  metadata: any = {}
+  metadata: Record<string, unknown> = {}
 ): Promise<void> {
   await supabaseAdmin
     .from('operations')
