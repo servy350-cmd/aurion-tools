@@ -41,26 +41,53 @@ export default function App() {
   const [profileError, setProfileError] = useState<string | null>(null)
 
   useEffect(() => {
-    const init = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session) {
-        const { profile, error } = await loadOrRecoverProfile(
-          session.user.id,
-          session.user.email || '',
-        )
-        setProfile(profile)
-        setProfileError(error)
-      }
+    let cancelled = false
+    const timeout = setTimeout(() => {
+      if (cancelled) return
+      console.warn('[App] init timeout 4s — degradando a sin sesión')
+      setProfile(null)
+      setProfileError(null)
       setLoading(false)
-    }
-    init()
+    }, 4000)
+
+    supabase.auth.getSession()
+      .then(async ({ data, error }) => {
+        if (cancelled) return
+        if (error) {
+          console.error('[App] getSession error:', error)
+          return
+        }
+        const session = data?.session
+        if (session) {
+          const { profile, error: profErr } = await loadOrRecoverProfile(
+            session.user.id,
+            session.user.email || '',
+          )
+          if (cancelled) return
+          setProfile(profile)
+          setProfileError(profErr)
+        }
+      })
+      .catch(err => {
+        if (cancelled) return
+        console.error('[App] init threw:', err)
+        setProfile(null)
+        setProfileError(err instanceof Error ? err.message : String(err))
+      })
+      .finally(() => {
+        if (cancelled) return
+        clearTimeout(timeout)
+        setLoading(false)
+      })
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      if (cancelled) return
       if (session) {
         const { profile, error } = await loadOrRecoverProfile(
           session.user.id,
           session.user.email || '',
         )
+        if (cancelled) return
         setProfile(profile)
         setProfileError(error)
       } else {
@@ -69,7 +96,11 @@ export default function App() {
       }
     })
 
-    return () => subscription.unsubscribe()
+    return () => {
+      cancelled = true
+      clearTimeout(timeout)
+      subscription.unsubscribe()
+    }
   }, [])
 
   if (loading) {
