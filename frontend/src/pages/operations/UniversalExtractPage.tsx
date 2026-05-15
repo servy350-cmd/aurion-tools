@@ -14,6 +14,7 @@ import {
 } from 'lucide-react'
 import { StreamingProgress, type ProgressEvent } from '../../components/StreamingProgress'
 import { streamSSE } from '../../lib/sseClient'
+import { asciiExt, toAnonBlob } from '../../lib/fileSanitize'
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024
 
@@ -181,11 +182,13 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
       const fileNames: string[] = []
       const uploadResults = await Promise.all(
         files.map((f, i) => {
-          const ext = f.name.split('.').pop() || 'bin'
+          const ext = asciiExt(f.name)
           const path = `${userId}/inputs/${ts}_${i}.${ext}`
-          fileNames.push(f.name)
+          fileNames.push(f.name) // nombre original viaja en BODY JSON (UTF-8 OK)
           filePaths.push(path)
-          return supabase.storage.from('files').upload(path, f, {
+          // toAnonBlob() quita f.name → supabase-js no puede meterlo en
+          // multipart Content-Disposition (fix bug ISO-8859-1).
+          return supabase.storage.from('files').upload(path, toAnonBlob(f), {
             contentType: f.type || 'application/octet-stream',
             upsert: false,
           })
@@ -198,8 +201,8 @@ export default function UniversalExtractPage({ profile }: { profile: Profile }) 
       let masterName: string | undefined
       if (masterFile) {
         masterPath = `${userId}/inputs/${ts}_master.xlsx`
-        masterName = masterFile.name
-        const r = await supabase.storage.from('files').upload(masterPath, masterFile, {
+        masterName = masterFile.name // BODY JSON
+        const r = await supabase.storage.from('files').upload(masterPath, toAnonBlob(masterFile), {
           contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           upsert: false,
         })

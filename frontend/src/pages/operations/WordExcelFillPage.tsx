@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { Link, Navigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { Profile, supabase } from '../../lib/supabase'
+import { toAnonBlob } from '../../lib/fileSanitize'
 import {
   ArrowLeft,
   Upload,
@@ -111,12 +112,12 @@ export default function WordExcelFillPage({ profile }: { profile: Profile }) {
       const excelPath = `${userId}/inputs/${ts}_excel.xlsx`
 
       const [u1, u2] = await Promise.all([
-        supabase.storage.from('files').upload(wordPath, wordFile, {
+        supabase.storage.from('files').upload(wordPath, toAnonBlob(wordFile), {
           contentType:
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
           upsert: false,
         }),
-        supabase.storage.from('files').upload(excelPath, excelFile, {
+        supabase.storage.from('files').upload(excelPath, toAnonBlob(excelFile), {
           contentType:
             'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
           upsert: false,

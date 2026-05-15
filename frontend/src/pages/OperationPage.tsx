@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useParams, Link, Navigate } from 'react-router-dom'
 import { useDropzone } from 'react-dropzone'
 import { Profile, supabase } from '../lib/supabase'
+import { asciiExt, toAnonBlob } from '../lib/fileSanitize'
 import { ArrowLeft, Upload, Loader2, Download, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 const OPERATION_CONFIG: Record<string, { title: string; accept: Record<string, string[]>; description: string }> = {
@@ -97,9 +98,9 @@ export default function OperationPage({ profile }: { profile: Profile }) {
       }
       const userId = session.user.id
       const ts = Date.now()
-      const ext = file.name.split('.').pop()
+      const ext = asciiExt(file.name)
       const path = `${userId}/inputs/${ts}.${ext}`
-      const { error: uploadErr } = await supabase.storage.from('files').upload(path, file, {
+      const { error: uploadErr } = await supabase.storage.from('files').upload(path, toAnonBlob(file), {
         contentType: file.type,
         upsert: false,
       })

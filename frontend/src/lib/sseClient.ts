@@ -1,5 +1,11 @@
 /**
  * Cliente SSE para endpoints POST (EventSource no acepta body).
+ *
+ * IMPORTANTE: nunca pasar datos del usuario (instrucciones, nombres de
+ * archivo, etc.) como headers — los headers HTTP solo aceptan ISO-8859-1
+ * y fetch lanza "String contains non ISO-8859-1 code point" si una tilde
+ * o ñ aparece ahí. Todo dato del usuario va en el body JSON, que sí es UTF-8.
+ *
  * Uso:
  *   for await (const ev of streamSSE('/api/...', { method: 'POST', body: ..., headers: ... })) {
  *     console.log(ev)
@@ -11,7 +17,11 @@ export async function* streamSSE(
   url: string,
   init: RequestInit & { signal?: AbortSignal },
 ): AsyncGenerator<SSEEvent, void, void> {
-  const res = await fetch(url, init)
+  const headers: Record<string, string> = {
+    Accept: 'text/event-stream',
+    ...(init.headers as Record<string, string> | undefined),
+  }
+  const res = await fetch(url, { ...init, headers })
   if (!res.ok || !res.body) {
     const text = await res.text().catch(() => '')
     throw new Error(`SSE request failed: HTTP ${res.status} ${text.slice(0, 200)}`)
