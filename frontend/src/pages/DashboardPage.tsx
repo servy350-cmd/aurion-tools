@@ -1,6 +1,6 @@
 import { useNavigate, Link } from 'react-router-dom'
 import { Profile, supabase } from '../lib/supabase'
-import { Camera, FileText, FileSpreadsheet, FileOutput, History, LogOut, Crown } from 'lucide-react'
+import { Camera, FileText, FileSpreadsheet, FileOutput, History, LogOut, Crown, ShieldCheck } from 'lucide-react'
 
 const OPERATIONS = [
   {
@@ -60,6 +60,15 @@ export default function DashboardPage({ profile }: { profile: Profile }) {
             <span className="text-white font-bold text-lg">AURION Tools</span>
           </div>
           <div className="flex items-center gap-4">
+            {profile.is_admin && (
+              <Link
+                to="/admin"
+                className="flex items-center gap-2 text-amber-400 hover:text-amber-300 transition text-sm"
+              >
+                <ShieldCheck className="w-4 h-4" />
+                Admin
+              </Link>
+            )}
             <Link
               to="/history"
               className="flex items-center gap-2 text-slate-300 hover:text-white transition text-sm"

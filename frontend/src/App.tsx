@@ -5,6 +5,7 @@ import LoginPage from './pages/LoginPage'
 import DashboardPage from './pages/DashboardPage'
 import OperationPage from './pages/OperationPage'
 import HistoryPage from './pages/HistoryPage'
+import AdminPage from './pages/AdminPage'
 
 async function loadOrRecoverProfile(
   userId: string,
@@ -102,6 +103,16 @@ export default function App() {
       <Route path="/" element={profile ? <DashboardPage profile={profile} /> : <Navigate to="/login" />} />
       <Route path="/op/:type" element={profile ? <OperationPage profile={profile} /> : <Navigate to="/login" />} />
       <Route path="/history" element={profile ? <HistoryPage profile={profile} /> : <Navigate to="/login" />} />
+      <Route
+        path="/admin"
+        element={
+          profile
+            ? profile.is_admin
+              ? <AdminPage profile={profile} />
+              : <Navigate to="/" replace />
+            : <Navigate to="/login" />
+        }
+      />
     </Routes>
   )
 }
