@@ -77,6 +77,26 @@ as $$
 $$;
 
 -- =============================================================================
+-- Helper: is_admin() — SECURITY DEFINER para evitar recursión de RLS
+-- =============================================================================
+-- Las policies de admin no pueden hacer EXISTS sobre public.profiles dentro de
+-- su propio USING porque eso re-dispara la misma policy → "infinite recursion
+-- detected in policy for relation profiles". Solución: una función que lee
+-- is_admin saltando RLS (SECURITY DEFINER).
+
+create or replace function public.is_admin(p_user_id uuid)
+returns boolean
+language sql
+security definer
+stable
+set search_path = ''
+as $$
+    select coalesce((select is_admin from public.profiles where id = p_user_id), false);
+$$;
+
+grant execute on function public.is_admin(uuid) to anon, authenticated, service_role;
+
+-- =============================================================================
 -- Row Level Security
 -- =============================================================================
 alter table public.profiles enable row level security;
@@ -85,10 +105,7 @@ alter table public.operations enable row level security;
 drop policy if exists "Users can view own profile" on public.profiles;
 create policy "Users can view own profile"
     on public.profiles for select
-    using (auth.uid() = id or exists(
-        select 1 from public.profiles p
-        where p.id = auth.uid() and p.is_admin = true
-    ));
+    using (auth.uid() = id or public.is_admin(auth.uid()));
 
 drop policy if exists "Users can update own profile" on public.profiles;
 create policy "Users can update own profile"
@@ -98,10 +115,7 @@ create policy "Users can update own profile"
 drop policy if exists "Users see own operations" on public.operations;
 create policy "Users see own operations"
     on public.operations for select
-    using (auth.uid() = user_id or exists(
-        select 1 from public.profiles p
-        where p.id = auth.uid() and p.is_admin = true
-    ));
+    using (auth.uid() = user_id or public.is_admin(auth.uid()));
 
 drop policy if exists "Users insert own operations" on public.operations;
 create policy "Users insert own operations"
@@ -111,10 +125,7 @@ create policy "Users insert own operations"
 drop policy if exists "Users update own operations" on public.operations;
 create policy "Users update own operations"
     on public.operations for update
-    using (auth.uid() = user_id or exists(
-        select 1 from public.profiles p
-        where p.id = auth.uid() and p.is_admin = true
-    ));
+    using (auth.uid() = user_id or public.is_admin(auth.uid()));
 
 -- =============================================================================
 -- Storage policies para bucket "files"
